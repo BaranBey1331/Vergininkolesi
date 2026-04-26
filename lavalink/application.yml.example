@@ -39,8 +39,9 @@ plugins:
       - "ytsearch:%QUERY%"
     sources:
       spotify: true
-      applemusic: true
-      deezer: true
+      # Apple Music and Deezer require extra credentials. Keep them off or Lavalink can fail at startup.
+      applemusic: false
+      deezer: false
       yandexmusic: false
       vkmusic: false
       tidal: false
@@ -50,13 +51,16 @@ plugins:
       flowerytts: false
       youtube: false
     spotify:
-      # Spotify linkleri metadata olarak cozulur; ses YouTube/Deezer gibi provider'lardan eslenir.
+      # Spotify linkleri metadata olarak cozulur; ses YouTube provider'larindan eslenir.
       # Daha iyi sonuc icin Spotify Developer Dashboard'dan clientId/clientSecret ekleyebilirsin.
       clientId: ""
       clientSecret: ""
       countryCode: "TR"
       playlistLoadLimit: 6
       albumLoadLimit: 6
+      resolveArtistsInSearch: true
+      localFiles: false
+      preferAnonymousToken: false
 
 logging:
   level:
