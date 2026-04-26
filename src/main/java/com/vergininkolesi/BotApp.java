@@ -107,7 +107,7 @@ public final class BotApp {
 
     private static void ensureLavalinkBackend(BotConfig config) {
         String versionUrl = toHttpUri(config.lavalinkUri()).resolve("/version").toString();
-        if (isLavalinkReady(versionUrl)) {
+        if (isLavalinkReady(versionUrl, config.lavalinkPassword())) {
             LOG.info("Lavalink is already ready at {}", config.lavalinkUri());
             return;
         }
@@ -157,7 +157,7 @@ public final class BotApp {
                 return false;
             }
 
-            if (isLavalinkReady(versionUrl)) {
+            if (isLavalinkReady(versionUrl, config.lavalinkPassword())) {
                 LOG.info("Bundled Lavalink is ready at {}", config.lavalinkUri());
                 monitorLavalinkProcess(process);
                 return true;
@@ -170,13 +170,14 @@ public final class BotApp {
         return false;
     }
 
-    private static boolean isLavalinkReady(String versionUrl) {
+    private static boolean isLavalinkReady(String versionUrl, String password) {
         HttpURLConnection connection = null;
         try {
             connection = (HttpURLConnection) new URL(versionUrl).openConnection();
             connection.setConnectTimeout(1_000);
             connection.setReadTimeout(1_000);
             connection.setRequestMethod("GET");
+            connection.setRequestProperty("Authorization", password);
             return connection.getResponseCode() == 200;
         } catch (IOException ignored) {
             return false;

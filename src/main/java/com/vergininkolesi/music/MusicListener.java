@@ -15,10 +15,21 @@ import org.jetbrains.annotations.NotNull;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class MusicListener extends ListenerAdapter {
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
+    private static final Pattern JSON_TITLE = Pattern.compile("\"title\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"");
+
     private final LavalinkClient lavalink;
     private final int defaultVolume;
     private final Map<Long, GuildMusicManager> musicManagers = new ConcurrentHashMap<>();
@@ -89,15 +100,22 @@ public final class MusicListener extends ListenerAdapter {
 
         event.deferReply(false).queue();
         String query = event.getOption("query").getAsString().trim();
-        String identifier = normalizeIdentifier(query);
         GuildMusicManager manager = getOrCreateMusicManager(guild.getIdLong());
 
-        manager.getOrCreateLink()
-            .loadItem(identifier)
-            .subscribe(new AudioLoadHandler(event, manager), error -> event.getHook().sendMessageEmbeds(MusicEmbeds.error(
-                "Lavalink baglantisi yok",
-                "Muzik motoruna ulasilamadi. Sunucuda `Lavalink.jar` baslamamis olabilir.\n`" + trim(error.getMessage()) + "`"
-            ).build()).queue());
+        CompletableFuture.supplyAsync(() -> normalizeIdentifier(query))
+            .thenAccept(identifier -> manager.getOrCreateLink()
+                .loadItem(identifier)
+                .subscribe(new AudioLoadHandler(event, manager), error -> event.getHook().sendMessageEmbeds(MusicEmbeds.error(
+                    "Lavalink baglantisi yok",
+                    "Muzik motoruna ulasilamadi. Sunucuda `Lavalink.jar` baslamamis olabilir.\n`" + trim(error.getMessage()) + "`"
+                ).build()).queue()))
+            .exceptionally(error -> {
+                event.getHook().sendMessageEmbeds(MusicEmbeds.error(
+                    "Arama hazirlanamadi",
+                    "`" + trim(error.getMessage()) + "`"
+                ).build()).queue();
+                return null;
+            });
     }
 
     private void skip(SlashCommandInteractionEvent event, Guild guild) {
@@ -235,6 +253,10 @@ public final class MusicListener extends ListenerAdapter {
     }
 
     private static String normalizeIdentifier(String query) {
+        if (isSpotifyUrl(query)) {
+            return "ytsearch:" + spotifySearchQuery(query);
+        }
+
         if (query.startsWith("ytsearch:")
             || query.startsWith("ytmsearch:")
             || query.startsWith("scsearch:")
@@ -243,6 +265,44 @@ public final class MusicListener extends ListenerAdapter {
         }
 
         return "ytsearch:" + query;
+    }
+
+    private static boolean isSpotifyUrl(String value) {
+        return value.startsWith("https://open.spotify.com/")
+            || value.startsWith("http://open.spotify.com/")
+            || value.startsWith("spotify:");
+    }
+
+    private static String spotifySearchQuery(String spotifyUrl) {
+        try {
+            String encodedUrl = URLEncoder.encode(spotifyUrl, StandardCharsets.UTF_8);
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://open.spotify.com/oembed?url=" + encodedUrl))
+                .timeout(java.time.Duration.ofSeconds(5))
+                .GET()
+                .build();
+            HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                Matcher matcher = JSON_TITLE.matcher(response.body());
+                if (matcher.find()) {
+                    return unescapeJson(matcher.group(1));
+                }
+            }
+        } catch (Exception ignored) {
+            // Fall back to the raw URL if Spotify metadata is temporarily unavailable.
+        }
+
+        return spotifyUrl;
+    }
+
+    private static String unescapeJson(String value) {
+        return value
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\")
+            .replace("\\/", "/")
+            .replace("\\n", " ")
+            .replace("\\r", " ")
+            .replace("\\t", " ");
     }
 
     private static boolean isUri(String value) {

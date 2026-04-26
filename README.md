@@ -6,7 +6,7 @@ Java + JDA + Lavalink v4 muzik botu.
 
 - Discord slash komutlari: `/play`, `/skip`, `/stop`, `/pause`, `/resume`, `/nowplaying`, `/queue`, `/volume`, `/leave`
 - YouTube arama ve direkt video/playlist linkleri
-- Spotify/Apple Music/Deezer linkleri icin Lavalink LavaSrc destegi
+- Spotify track linkleri credentialsiz oEmbed metadata ile YouTube aramasina cevrilir
 - Sunucu/guild id istemez; komutlar global kaydolur ve guild id runtime'da otomatik alinir
 - `.env` ile token ve Lavalink node ayari
 - Wispbyte icin tek dosya fat jar: `build/libs/vergininkolesi-1.0.0-all.jar`
@@ -51,7 +51,6 @@ Disaridan ayri Lavalink kullanacaksan `LAVALINK_AUTOSTART=false` yap.
 Wispbyte startup dosyasi olarak `index.js` kullanilabilir. Bu dosya jar yoksa once `./gradlew build`
 calistirir, jar varsa direkt `java -jar build/libs/vergininkolesi-1.0.0-all.jar` ile botu baslatir.
 
-Spotify Premium benzeri deneyim icin LavaSrc Spotify metadata'sini cozer ve sesi provider listesiyle esler.
-Spotify URL'leri direkt Spotify sesini stream etmez; Lavalink/LavaSrc tarafinda YouTube veya Deezer gibi playable kaynaklardan esleme yapar.
+Spotify URL'leri direkt Spotify sesini stream etmez. Bot Spotify oEmbed metadata'sini okur ve YouTube aramasi olarak Lavalink'e yollar.
 
 YouTube tarafinda Lavalink'in kendi eski YouTube kaynagi kapali tutuldu; `youtube-source` plugin'i kullaniliyor.
