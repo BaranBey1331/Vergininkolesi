@@ -13,15 +13,12 @@ import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import org.jetbrains.annotations.NotNull;
 
-import java.awt.Color;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class MusicListener extends ListenerAdapter {
-    private static final Color SPOTIFY_GREEN = new Color(30, 215, 96);
-
     private final LavalinkClient lavalink;
     private final int defaultVolume;
     private final Map<Long, GuildMusicManager> musicManagers = new ConcurrentHashMap<>();
@@ -54,7 +51,10 @@ public final class MusicListener extends ListenerAdapter {
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
         Guild guild = event.getGuild();
         if (guild == null) {
-            event.reply("Bu bot komutlari sunucu icinde kullanilir.").setEphemeral(true).queue();
+            event.replyEmbeds(MusicEmbeds.warning(
+                "Sunucu gerekli",
+                "Bu bot komutlari sadece Discord sunucusu icinde kullanilir."
+            ).build()).setEphemeral(true).queue();
             return;
         }
 
@@ -68,7 +68,9 @@ public final class MusicListener extends ListenerAdapter {
             case "queue" -> queue(event, guild);
             case "volume" -> volume(event, guild);
             case "leave" -> leave(event, guild);
-            default -> event.reply("Bilinmeyen komut.").setEphemeral(true).queue();
+            default -> event.replyEmbeds(MusicEmbeds.warning("Bilinmeyen komut", "Bu komut tanimli degil.").build())
+                .setEphemeral(true)
+                .queue();
         }
     }
 
@@ -92,27 +94,35 @@ public final class MusicListener extends ListenerAdapter {
 
         manager.getOrCreateLink()
             .loadItem(identifier)
-            .subscribe(new AudioLoadHandler(event, manager));
+            .subscribe(new AudioLoadHandler(event, manager), error -> event.getHook().sendMessageEmbeds(MusicEmbeds.error(
+                "Lavalink baglantisi yok",
+                "Muzik motoruna ulasilamadi. Sunucuda `Lavalink.jar` baslamamis olabilir.\n`" + trim(error.getMessage()) + "`"
+            ).build()).queue());
     }
 
     private void skip(SlashCommandInteractionEvent event, Guild guild) {
         GuildMusicManager manager = getOrCreateMusicManager(guild.getIdLong());
         manager.scheduler().skip();
-        event.reply("Gecildi.").queue();
+        event.replyEmbeds(MusicEmbeds.success("Gecildi", "Siradaki parcaya gecildi.").build()).queue();
     }
 
     private void stop(SlashCommandInteractionEvent event, Guild guild) {
         GuildMusicManager manager = getOrCreateMusicManager(guild.getIdLong());
         manager.stop();
-        event.reply("Durduruldu ve sira temizlendi.").queue();
+        event.replyEmbeds(MusicEmbeds.success("Durduruldu", "Calma durdu ve sira temizlendi.").build()).queue();
     }
 
     private void pause(SlashCommandInteractionEvent event, Guild guild, boolean paused) {
         lavalink.getOrCreateLink(guild.getIdLong())
             .getPlayer()
             .flatMap(player -> player.setPaused(paused))
-            .subscribe(player -> event.reply(paused ? "Duraklatildi." : "Devam ediyor.").queue(),
-                error -> event.reply("Aktif oynatici bulunamadi.").setEphemeral(true).queue());
+            .subscribe(player -> event.replyEmbeds(MusicEmbeds.success(
+                paused ? "Duraklatildi" : "Devam ediyor",
+                paused ? "Calan parca beklemeye alindi." : "Calma kaldigi yerden devam ediyor."
+            ).build()).queue(), error -> event.replyEmbeds(MusicEmbeds.warning(
+                "Aktif oynatici yok",
+                "Once `/play` ile bir parca baslat."
+            ).build()).setEphemeral(true).queue());
     }
 
     private void nowPlaying(SlashCommandInteractionEvent event, Guild guild) {
@@ -120,7 +130,9 @@ public final class MusicListener extends ListenerAdapter {
         var player = manager.getOrCreateLink().getCachedPlayer();
 
         if (player == null || player.getTrack() == null) {
-            event.reply("Su an calan parca yok.").setEphemeral(true).queue();
+            event.replyEmbeds(MusicEmbeds.info("Calan parca yok", "Su an aktif parca bulunmuyor.").build())
+                .setEphemeral(true)
+                .queue();
             return;
         }
 
@@ -129,11 +141,12 @@ public final class MusicListener extends ListenerAdapter {
         QueuedTrack data = track.getUserData(QueuedTrack.class);
         String requester = data == null ? "Bilinmiyor" : "<@" + data.requesterId() + ">";
 
+        String url = info.getUri();
         event.replyEmbeds(new EmbedBuilder()
-            .setColor(SPOTIFY_GREEN)
+            .setColor(MusicEmbeds.SPOTIFY_GREEN)
             .setTitle("Simdi caliyor")
-            .setDescription("[%s](%s)".formatted(info.getTitle(), info.getUri()))
-            .addField("Sanatci/Kaynak", info.getAuthor(), true)
+            .setDescription(url == null || url.isBlank() ? "**%s**".formatted(info.getTitle()) : "[%s](%s)".formatted(info.getTitle(), url))
+            .addField("Sanatci/Kaynak", nullToDash(info.getAuthor()), true)
             .addField("Konum", AudioLoadHandler.formatMillis(player.getPosition()) + " / " + AudioLoadHandler.formatMillis(info.getLength()), true)
             .addField("Istek", requester, true)
             .build()).queue();
@@ -144,7 +157,9 @@ public final class MusicListener extends ListenerAdapter {
         var tracks = manager.scheduler().snapshot(10);
 
         if (tracks.isEmpty()) {
-            event.reply("Sira bos.").setEphemeral(true).queue();
+            event.replyEmbeds(MusicEmbeds.info("Sira bos", "Sirada bekleyen parca yok.").build())
+                .setEphemeral(true)
+                .queue();
             return;
         }
 
@@ -165,7 +180,7 @@ public final class MusicListener extends ListenerAdapter {
         }
 
         event.replyEmbeds(new EmbedBuilder()
-            .setColor(SPOTIFY_GREEN)
+            .setColor(MusicEmbeds.SPOTIFY_GREEN)
             .setTitle("Sira")
             .setDescription(description.toString())
             .build()).queue();
@@ -178,18 +193,24 @@ public final class MusicListener extends ListenerAdapter {
         lavalink.getOrCreateLink(guild.getIdLong())
             .createOrUpdatePlayer()
             .setVolume(clamped)
-            .subscribe(player -> event.reply("Ses seviyesi `" + clamped + "` olarak ayarlandi.").queue());
+            .subscribe(player -> event.replyEmbeds(MusicEmbeds.success(
+                "Ses ayarlandi",
+                "Ses seviyesi `" + clamped + "` olarak ayarlandi."
+            ).build()).queue());
     }
 
     private void leave(SlashCommandInteractionEvent event, Guild guild) {
         getOrCreateMusicManager(guild.getIdLong()).stop();
         event.getJDA().getDirectAudioController().disconnect(guild);
-        event.reply("Ses kanalindan ayrildim.").queue();
+        event.replyEmbeds(MusicEmbeds.success("Ayrildim", "Ses kanalindan cikildi ve sira temizlendi.").build()).queue();
     }
 
     private boolean connectToMemberChannel(SlashCommandInteractionEvent event, Guild guild, Member member) {
         if (member == null || member.getVoiceState() == null || !member.getVoiceState().inAudioChannel()) {
-            event.reply("Once bir ses kanalina gir.").setEphemeral(true).queue();
+            event.replyEmbeds(MusicEmbeds.warning(
+                "Ses kanali gerekli",
+                "Once bir ses kanalina gir, sonra `/play` komutunu kullan."
+            ).build()).setEphemeral(true).queue();
             return false;
         }
 
@@ -224,5 +245,17 @@ public final class MusicListener extends ListenerAdapter {
         } catch (URISyntaxException ignored) {
             return false;
         }
+    }
+
+    private static String nullToDash(String value) {
+        return value == null || value.isBlank() ? "-" : value;
+    }
+
+    private static String trim(String value) {
+        if (value == null || value.isBlank()) {
+            return "Bilinmeyen hata";
+        }
+
+        return value.length() > 250 ? value.substring(0, 247) + "..." : value;
     }
 }

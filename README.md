@@ -32,9 +32,12 @@ java -jar build/libs/vergininkolesi-1.0.0-all.jar
 ```env
 BOT_TOKEN=discord_bot_token_buraya
 LAVALINK_NAME=primary
-LAVALINK_URI=ws://87.106.190.187:11121
+LAVALINK_URI=ws://localhost:2333
 LAVALINK_PASSWORD=youshallnotpass
 LAVALINK_REGION=EUROPE
+LAVALINK_AUTOSTART=true
+LAVALINK_JAR=Lavalink.jar
+LAVALINK_STARTUP_DELAY_MS=45000
 DEFAULT_VOLUME=80
 ```
 
@@ -42,8 +45,8 @@ DEFAULT_VOLUME=80
 
 ## Lavalink
 
-Bot Lavalink server'i kendi icinde baslatmaz; Wispbyte'da ayri Lavalink servisi/node'u calismali.
-Ornek config: `lavalink/application.yml.example`
+Zip paketinde `Lavalink.jar` ve `application.yml` varsa bot baslarken Lavalink'i otomatik baslatir.
+Disaridan ayri Lavalink kullanacaksan `LAVALINK_AUTOSTART=false` yap.
 
 Wispbyte startup dosyasi olarak `index.js` kullanilabilir. Bu dosya jar yoksa once `./gradlew build`
 calistirir, jar varsa direkt `java -jar build/libs/vergininkolesi-1.0.0-all.jar` ile botu baslatir.

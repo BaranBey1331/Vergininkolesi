@@ -8,6 +8,9 @@ public record BotConfig(
     String lavalinkUri,
     String lavalinkPassword,
     String lavalinkRegion,
+    boolean lavalinkAutostart,
+    String lavalinkJar,
+    long lavalinkStartupDelayMs,
     int defaultVolume
 ) {
     public static BotConfig load() {
@@ -27,6 +30,9 @@ public record BotConfig(
             read(dotenv, "LAVALINK_URI", "ws://localhost:2333"),
             read(dotenv, "LAVALINK_PASSWORD", "youshallnotpass"),
             read(dotenv, "LAVALINK_REGION", "EUROPE"),
+            Boolean.parseBoolean(read(dotenv, "LAVALINK_AUTOSTART", "true")),
+            read(dotenv, "LAVALINK_JAR", "Lavalink.jar"),
+            parseDelay(read(dotenv, "LAVALINK_STARTUP_DELAY_MS", "45000")),
             parseVolume(read(dotenv, "DEFAULT_VOLUME", "80"))
         );
     }
@@ -51,6 +57,14 @@ public record BotConfig(
             return Math.max(0, Math.min(1000, volume));
         } catch (NumberFormatException ignored) {
             return 80;
+        }
+    }
+
+    private static long parseDelay(String value) {
+        try {
+            return Math.max(0, Long.parseLong(value));
+        } catch (NumberFormatException ignored) {
+            return 45_000L;
         }
     }
 }

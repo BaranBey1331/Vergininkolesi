@@ -20,7 +20,13 @@ import net.dv8tion.jda.api.utils.cache.CacheFlag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class BotApp {
     private static final Logger LOG = LoggerFactory.getLogger(BotApp.class);
@@ -31,6 +37,8 @@ public final class BotApp {
 
     public static void main(String[] args) throws InterruptedException {
         BotConfig config = BotConfig.load();
+        startBundledLavalink(config);
+
         LavalinkClient lavalink = new LavalinkClient(Helpers.getUserIdFromToken(config.botToken()));
         MusicListener musicListener = new MusicListener(lavalink, config.defaultVolume());
 
@@ -64,6 +72,8 @@ public final class BotApp {
     }
 
     private static void registerLavalinkNode(LavalinkClient lavalink, BotConfig config) {
+        LOG.info("Connecting to Lavalink node '{}' at {}", config.lavalinkName(), config.lavalinkUri());
+
         LavalinkNode node = lavalink.addNode(
             new NodeOptions.Builder()
                 .setName(config.lavalinkName())
@@ -93,5 +103,76 @@ public final class BotApp {
         ));
 
         lavalink.on(TrackEndEvent.class).subscribe(musicListener::onTrackEnd);
+    }
+
+    private static void startBundledLavalink(BotConfig config) {
+        if (!config.lavalinkAutostart()) {
+            return;
+        }
+
+        File lavalinkJar = new File(config.lavalinkJar());
+        if (!lavalinkJar.isFile()) {
+            LOG.warn("LAVALINK_AUTOSTART=true but '{}' was not found. Bot will try external Lavalink only.", config.lavalinkJar());
+            return;
+        }
+
+        List<String> command = new ArrayList<>();
+        command.add("java");
+        command.add("-jar");
+        command.add(lavalinkJar.getPath());
+
+        try {
+            Process process = new ProcessBuilder(command)
+                .inheritIO()
+                .start();
+
+            Runtime.getRuntime().addShutdownHook(new Thread(process::destroy));
+            LOG.info("Bundled Lavalink started from '{}'. Waiting for node readiness...", lavalinkJar.getPath());
+            waitForBundledLavalink(config, process);
+        } catch (IOException e) {
+            LOG.error("Failed to start bundled Lavalink jar '{}'", lavalinkJar.getPath(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.warn("Interrupted while waiting for bundled Lavalink startup.");
+        }
+    }
+
+    private static void waitForBundledLavalink(BotConfig config, Process process) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + config.lavalinkStartupDelayMs();
+        String versionUrl = toHttpUri(config.lavalinkUri()).resolve("/version").toString();
+
+        while (System.currentTimeMillis() < deadline) {
+            if (!process.isAlive()) {
+                LOG.error("Bundled Lavalink exited before becoming ready. Check application.yml and plugin download logs above.");
+                return;
+            }
+
+            if (isLavalinkReady(versionUrl)) {
+                LOG.info("Bundled Lavalink is ready at {}", config.lavalinkUri());
+                return;
+            }
+
+            Thread.sleep(1_000L);
+        }
+
+        LOG.warn("Bundled Lavalink did not answer before timeout. Bot will still start and Lavalink client will keep retrying.");
+    }
+
+    private static boolean isLavalinkReady(String versionUrl) {
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(versionUrl).openConnection();
+            connection.setConnectTimeout(1_000);
+            connection.setReadTimeout(1_000);
+            connection.setRequestMethod("GET");
+            return connection.getResponseCode() >= 200 && connection.getResponseCode() < 500;
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
+    private static URI toHttpUri(String lavalinkUri) {
+        URI uri = URI.create(lavalinkUri);
+        String scheme = "wss".equalsIgnoreCase(uri.getScheme()) ? "https" : "http";
+        return URI.create(scheme + "://" + uri.getAuthority());
     }
 }

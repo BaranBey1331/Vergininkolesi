@@ -10,12 +10,9 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import org.jetbrains.annotations.NotNull;
 
-import java.awt.Color;
 import java.util.List;
 
 public final class AudioLoadHandler extends AbstractAudioLoadResultHandler {
-    private static final Color SPOTIFY_GREEN = new Color(30, 215, 96);
-
     private final SlashCommandInteractionEvent event;
     private final GuildMusicManager manager;
     private final long requesterId;
@@ -40,9 +37,8 @@ public final class AudioLoadHandler extends AbstractAudioLoadResultHandler {
     @Override
     public void onPlaylistLoaded(@NotNull PlaylistLoaded result) {
         int count = manager.scheduler().enqueuePlaylist(result.getTracks(), requesterId);
-        event.getHook().sendMessageEmbeds(new EmbedBuilder()
-            .setColor(SPOTIFY_GREEN)
-            .setTitle("Playlist siraya eklendi")
+        event.getHook().sendMessageEmbeds(MusicEmbeds.success("Playlist siraya eklendi",
+                "Spotify kalitesinde sira hazirlandi.")
             .setDescription("**%s** icinden `%d` parca eklendi.".formatted(result.getInfo().getName(), count))
             .build()).queue();
     }
@@ -66,13 +62,19 @@ public final class AudioLoadHandler extends AbstractAudioLoadResultHandler {
 
     @Override
     public void noMatches() {
-        event.getHook().sendMessage("Sonuc bulunamadi. Link, YouTube/Spotify URL veya arama metni deneyin.").queue();
+        event.getHook().sendMessageEmbeds(MusicEmbeds.warning(
+            "Sonuc bulunamadi",
+            "Link, YouTube/Spotify URL veya daha net bir arama metni deneyin."
+        ).build()).queue();
     }
 
     @Override
     public void loadFailed(@NotNull LoadFailed result) {
         String message = result.getException() == null ? "Bilinmeyen Lavalink hatasi." : result.getException().getMessage();
-        event.getHook().sendMessage("Parca yuklenemedi: " + message).queue();
+        event.getHook().sendMessageEmbeds(MusicEmbeds.error(
+            "Parca yuklenemedi",
+            "Lavalink parcayi cozmedi.\n`" + trim(message) + "`"
+        ).build()).queue();
     }
 
     private Track withRequester(Track track) {
@@ -84,9 +86,9 @@ public final class AudioLoadHandler extends AbstractAudioLoadResultHandler {
         var info = track.getInfo();
         String url = info.getUri();
         EmbedBuilder embed = new EmbedBuilder()
-            .setColor(SPOTIFY_GREEN)
+            .setColor(MusicEmbeds.SPOTIFY_GREEN)
             .setTitle(title)
-            .setDescription("[%s](%s)".formatted(info.getTitle(), url == null ? "" : url))
+            .setDescription(url == null || url.isBlank() ? "**%s**".formatted(info.getTitle()) : "[%s](%s)".formatted(info.getTitle(), url))
             .addField("Sanatci/Kaynak", nullToDash(info.getAuthor()), true)
             .addField("Sure", formatMillis(info.getLength()), true)
             .addField("Sira", queueSize == 0 ? "Simdi" : String.valueOf(queueSize), true)
@@ -118,5 +120,13 @@ public final class AudioLoadHandler extends AbstractAudioLoadResultHandler {
         }
 
         return "%d:%02d".formatted(minutes, remainingSeconds);
+    }
+
+    private static String trim(String value) {
+        if (value == null || value.isBlank()) {
+            return "Bilinmeyen hata";
+        }
+
+        return value.length() > 250 ? value.substring(0, 247) + "..." : value;
     }
 }
