@@ -1,0 +1,9 @@
+.gradle/
+.omx/
+build/
+out/
+*.class
+*.jar
+
+.env
+*.log
