@@ -37,7 +37,7 @@ public final class BotApp {
 
     public static void main(String[] args) throws InterruptedException {
         BotConfig config = BotConfig.load();
-        startBundledLavalink(config);
+        ensureLavalinkBackend(config);
 
         LavalinkClient lavalink = new LavalinkClient(Helpers.getUserIdFromToken(config.botToken()));
         MusicListener musicListener = new MusicListener(lavalink, config.defaultVolume());
@@ -105,21 +105,30 @@ public final class BotApp {
         lavalink.on(TrackEndEvent.class).subscribe(musicListener::onTrackEnd);
     }
 
-    private static void startBundledLavalink(BotConfig config) {
+    private static void ensureLavalinkBackend(BotConfig config) {
+        String versionUrl = toHttpUri(config.lavalinkUri()).resolve("/version").toString();
+        if (isLavalinkReady(versionUrl)) {
+            LOG.info("Lavalink is already ready at {}", config.lavalinkUri());
+            return;
+        }
+
         if (!config.lavalinkAutostart()) {
+            LOG.warn("LAVALINK_AUTOSTART=false and Lavalink is not ready at {}.", config.lavalinkUri());
             return;
         }
 
         File lavalinkJar = new File(config.lavalinkJar());
         if (!lavalinkJar.isFile()) {
-            LOG.warn("LAVALINK_AUTOSTART=true but '{}' was not found. Bot will try external Lavalink only.", config.lavalinkJar());
-            return;
+            throw new IllegalStateException("LAVALINK_AUTOSTART=true but '" + config.lavalinkJar() + "' was not found.");
         }
 
         List<String> command = new ArrayList<>();
         command.add("java");
         command.add("-jar");
         command.add(lavalinkJar.getPath());
+        if (new File("application.yml").isFile()) {
+            command.add("--spring.config.location=application.yml");
+        }
 
         try {
             Process process = new ProcessBuilder(command)
@@ -128,46 +137,67 @@ public final class BotApp {
 
             Runtime.getRuntime().addShutdownHook(new Thread(process::destroy));
             LOG.info("Bundled Lavalink started from '{}'. Waiting for node readiness...", lavalinkJar.getPath());
-            waitForBundledLavalink(config, process);
+            if (!waitForBundledLavalink(config, process, versionUrl)) {
+                throw new IllegalStateException("Bundled Lavalink did not become ready at " + config.lavalinkUri());
+            }
         } catch (IOException e) {
-            LOG.error("Failed to start bundled Lavalink jar '{}'", lavalinkJar.getPath(), e);
+            throw new IllegalStateException("Failed to start bundled Lavalink jar '" + lavalinkJar.getPath() + "'", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            LOG.warn("Interrupted while waiting for bundled Lavalink startup.");
+            throw new IllegalStateException("Interrupted while waiting for bundled Lavalink startup.", e);
         }
     }
 
-    private static void waitForBundledLavalink(BotConfig config, Process process) throws InterruptedException {
+    private static boolean waitForBundledLavalink(BotConfig config, Process process, String versionUrl) throws InterruptedException {
         long deadline = System.currentTimeMillis() + config.lavalinkStartupDelayMs();
-        String versionUrl = toHttpUri(config.lavalinkUri()).resolve("/version").toString();
 
         while (System.currentTimeMillis() < deadline) {
             if (!process.isAlive()) {
-                LOG.error("Bundled Lavalink exited before becoming ready. Check application.yml and plugin download logs above.");
-                return;
+                LOG.error("Bundled Lavalink exited before becoming ready with code {}. Check application.yml and plugin logs above.", process.exitValue());
+                return false;
             }
 
             if (isLavalinkReady(versionUrl)) {
                 LOG.info("Bundled Lavalink is ready at {}", config.lavalinkUri());
-                return;
+                monitorLavalinkProcess(process);
+                return true;
             }
 
             Thread.sleep(1_000L);
         }
 
-        LOG.warn("Bundled Lavalink did not answer before timeout. Bot will still start and Lavalink client will keep retrying.");
+        LOG.error("Bundled Lavalink did not answer at {} within {} ms.", versionUrl, config.lavalinkStartupDelayMs());
+        return false;
     }
 
     private static boolean isLavalinkReady(String versionUrl) {
+        HttpURLConnection connection = null;
         try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(versionUrl).openConnection();
+            connection = (HttpURLConnection) new URL(versionUrl).openConnection();
             connection.setConnectTimeout(1_000);
             connection.setReadTimeout(1_000);
             connection.setRequestMethod("GET");
-            return connection.getResponseCode() >= 200 && connection.getResponseCode() < 500;
+            return connection.getResponseCode() == 200;
         } catch (IOException ignored) {
             return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
+    }
+
+    private static void monitorLavalinkProcess(Process process) {
+        Thread monitor = new Thread(() -> {
+            try {
+                int code = process.waitFor();
+                LOG.error("Bundled Lavalink process exited with code {}. Playback will stop until the server is restarted.", code);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "lavalink-process-monitor");
+        monitor.setDaemon(true);
+        monitor.start();
     }
 
     private static URI toHttpUri(String lavalinkUri) {

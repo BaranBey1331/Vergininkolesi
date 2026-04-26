@@ -32,7 +32,7 @@ public record BotConfig(
             read(dotenv, "LAVALINK_REGION", "EUROPE"),
             Boolean.parseBoolean(read(dotenv, "LAVALINK_AUTOSTART", "true")),
             read(dotenv, "LAVALINK_JAR", "Lavalink.jar"),
-            parseDelay(read(dotenv, "LAVALINK_STARTUP_DELAY_MS", "45000")),
+            parseDelay(read(dotenv, "LAVALINK_STARTUP_DELAY_MS", "120000")),
             parseVolume(read(dotenv, "DEFAULT_VOLUME", "80"))
         );
     }
@@ -64,7 +64,7 @@ public record BotConfig(
         try {
             return Math.max(0, Long.parseLong(value));
         } catch (NumberFormatException ignored) {
-            return 45_000L;
+            return 120_000L;
         }
     }
 }
