@@ -8,7 +8,12 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public final class TrackScheduler {
+    private static final Logger LOG = LoggerFactory.getLogger(TrackScheduler.class);
+
     private final GuildMusicManager manager;
     private final int defaultVolume;
     private final Queue<Track> queue = new LinkedList<>();
@@ -47,14 +52,24 @@ public final class TrackScheduler {
         return tracks.size();
     }
 
-    public synchronized void skip() {
+    public synchronized SkipResult skip() {
+        boolean hasCurrentTrack = manager.getPlayer()
+            .map(player -> player.getTrack() != null)
+            .orElse(false);
+
+        if (!hasCurrentTrack && queue.isEmpty()) {
+            return SkipResult.NOTHING_PLAYING;
+        }
+
         Track next = queue.poll();
         if (next == null) {
-            manager.getPlayer().ifPresent(player -> player.setTrack(null).setPaused(false).subscribe());
-            return;
+            manager.getPlayer().ifPresent(player -> player.setTrack(null).setPaused(false)
+                .subscribe(ignored -> { }, error -> LOG.warn("Failed to stop player while skipping", error)));
+            return SkipResult.STOPPED;
         }
 
         startTrack(next);
+        return SkipResult.NEXT_TRACK;
     }
 
     public synchronized void onTrackEnd(Message.EmittedEvent.TrackEndEvent.AudioTrackEndReason endReason) {
@@ -90,9 +105,15 @@ public final class TrackScheduler {
             .setTrack(track)
             .setVolume(defaultVolume)
             .setPaused(false)
-            .subscribe();
+            .subscribe(ignored -> { }, error -> LOG.warn("Failed to start track '{}'", track.getInfo().getTitle(), error));
     }
 
     public record QueueResult(boolean started, int queueSize) {
+    }
+
+    public enum SkipResult {
+        NEXT_TRACK,
+        STOPPED,
+        NOTHING_PLAYING
     }
 }

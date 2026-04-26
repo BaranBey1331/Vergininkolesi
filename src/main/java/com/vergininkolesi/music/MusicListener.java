@@ -102,8 +102,15 @@ public final class MusicListener extends ListenerAdapter {
 
     private void skip(SlashCommandInteractionEvent event, Guild guild) {
         GuildMusicManager manager = getOrCreateMusicManager(guild.getIdLong());
-        manager.scheduler().skip();
-        event.replyEmbeds(MusicEmbeds.success("Gecildi", "Siradaki parcaya gecildi.").build()).queue();
+        TrackScheduler.SkipResult result = manager.scheduler().skip();
+
+        switch (result) {
+            case NEXT_TRACK -> event.replyEmbeds(MusicEmbeds.success("Gecildi", "Siradaki parcaya gecildi.").build()).queue();
+            case STOPPED -> event.replyEmbeds(MusicEmbeds.success("Sira bitti", "Calan parca durduruldu; sirada baska parca yok.").build()).queue();
+            case NOTHING_PLAYING -> event.replyEmbeds(MusicEmbeds.info("Calan parca yok", "Gecilecek aktif parca veya sira yok.").build())
+                .setEphemeral(true)
+                .queue();
+        }
     }
 
     private void stop(SlashCommandInteractionEvent event, Guild guild) {

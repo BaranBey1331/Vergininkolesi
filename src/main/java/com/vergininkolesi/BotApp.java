@@ -127,7 +127,7 @@ public final class BotApp {
         command.add("-jar");
         command.add(lavalinkJar.getPath());
         if (new File("application.yml").isFile()) {
-            command.add("--spring.config.location=application.yml");
+            command.add("--spring.config.additional-location=file:./application.yml");
         }
 
         try {

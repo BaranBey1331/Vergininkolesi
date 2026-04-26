@@ -3,10 +3,14 @@ package com.vergininkolesi.music;
 import dev.arbjerg.lavalink.client.LavalinkClient;
 import dev.arbjerg.lavalink.client.Link;
 import dev.arbjerg.lavalink.client.player.LavalinkPlayer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 
 public final class GuildMusicManager {
+    private static final Logger LOG = LoggerFactory.getLogger(GuildMusicManager.class);
+
     private final long guildId;
     private final LavalinkClient lavalink;
     private final TrackScheduler scheduler;
@@ -23,7 +27,8 @@ public final class GuildMusicManager {
 
     public void stop() {
         scheduler.clear();
-        getPlayer().ifPresent(player -> player.setPaused(false).setTrack(null).subscribe());
+        getPlayer().ifPresent(player -> player.setPaused(false).setTrack(null)
+            .subscribe(ignored -> { }, error -> LOG.warn("Failed to stop player for guild {}", guildId, error)));
     }
 
     public Optional<Link> getLink() {
